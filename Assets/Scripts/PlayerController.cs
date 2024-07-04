@@ -1,12 +1,14 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
+    public float rayCastLength;
+    public float rotationSpeed;
+    private float tmpRotationSpeed;
     public float speed;
     public float gravity;
+    private float tmpGravity;
     public float jumpForce;
     private Rigidbody rb;
     public Transform currentPlanet;
@@ -20,16 +22,23 @@ public class PlayerController : MonoBehaviour
     public bool isTouchingPlanetSurface = false;
     private Transform MainCameraTransform;
     public Transform CameraArmTransform;
+
     PlayerControls playerControls;
     Animator anim;
+
+    bool CanJump = true;
+    bool slowDown = false;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         MainCameraTransform = Camera.main.transform;
+        anim = GetComponent<Animator>();
+        tmpGravity = gravity;
+        tmpRotationSpeed = rotationSpeed;
+
         playerControls = new PlayerControls();
         playerControls.Movement.GamepadEastButton.performed += Jump;
-        anim = GetComponent<Animator>();
     }
 
     private void OnEnable()
@@ -51,8 +60,30 @@ public class PlayerController : MonoBehaviour
 
     void Jump(InputAction.CallbackContext context)
     {
+        if (!CanJump) return;
         rb.velocity *= 0;
         rb.AddForce(normalVector * jumpForce, ForceMode.Impulse);
+        gravity = tmpGravity / 2f;
+        Invoke(nameof(RestoreGravity), 1f);
+        CanJump = false;
+        rotationSpeed = tmpRotationSpeed / 2f;
+    }
+
+    void RestoreGravity()
+    {
+        gravity = tmpGravity;
+        CanJump = true;
+        slowDown = false;
+    }
+
+    public void EnterNewGravityField()
+    {
+        gravity = tmpGravity / 4f;
+        rb.velocity *= .5f;
+        rotationSpeed = tmpRotationSpeed / 10f;
+        slowDown = true;
+        CanJump = false;
+        Invoke(nameof(RestoreGravity), .5f);
     }
 
     void Movement()
@@ -61,8 +92,8 @@ public class PlayerController : MonoBehaviour
         Vector3 cameraRotation = new Vector3(0, MainCameraTransform.localEulerAngles.y + CameraArmTransform.localEulerAngles.y, 0);
         Vector3 Dir = Quaternion.Euler(cameraRotation) * input;
         Vector3 movement_dir = (transform.forward * Dir.z + transform.right * Dir.x);
-        Vector3 currentNormalVelocity = Vector3.Project(rb.velocity,normalVector.normalized);
-        rb.velocity = currentNormalVelocity + (movement_dir * speed) ;
+        Vector3 currentNormalVelocity = Vector3.Project(rb.velocity, normalVector.normalized);
+        rb.velocity = currentNormalVelocity + (movement_dir * speed);
 
         if (movement_dir != Vector3.zero)
         {
@@ -73,21 +104,42 @@ public class PlayerController : MonoBehaviour
         {
             anim.SetBool("IsMoving", false);
         }
-
+        if (slowDown)
+            rb.velocity *= .5f;
     }
 
     void ApplyGravity()
     {
         if (currentPlanet == null) return;
 
-        hits = Physics.RaycastAll(transform.position, -transform.up, 1.0f);
+        hits = Physics.RaycastAll(transform.position, -transform.up, rayCastLength);
+
+        if (hits.Length == 0)
+        {
+            hits = Physics.RaycastAll(transform.position, transform.forward, rayCastLength);
+        }
+
+        if (hits.Length == 0)
+        {
+            hits = Physics.RaycastAll(transform.position, -transform.forward, rayCastLength);
+        }
+
+        if (hits.Length == 0)
+        {
+            hits = Physics.RaycastAll(transform.position, transform.right, rayCastLength);
+        }
+
+        if (hits.Length == 0)
+        {
+            hits = Physics.RaycastAll(transform.position, -transform.right, rayCastLength);
+        }
 
         if (hits.Length == 0)
         {
             planetDir = currentPlanet.position - transform.position;
-            hits = Physics.RaycastAll(transform.position, planetDir, 1.0f);
+            hits = Physics.RaycastAll(transform.position, planetDir, rayCastLength);
         }
-        
+
         GetPlanetNormal();
         rb.AddForce(normalVector.normalized * gravity, ForceMode.Acceleration);
         hits = new RaycastHit[0];
@@ -96,7 +148,9 @@ public class PlayerController : MonoBehaviour
     void ApplyPlanetRotation()
     {
         Quaternion targetRotation = Quaternion.FromToRotation(transform.up, normalVector) * transform.rotation;
-        transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation, 5f * Time.fixedDeltaTime);
+        transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
+        if (isTouchingPlanetSurface && CanJump)
+            rotationSpeed = tmpRotationSpeed;
     }
 
     void GetPlanetNormal()
@@ -111,7 +165,6 @@ public class PlayerController : MonoBehaviour
                 break;
             }
         }
-
         return;
     }
 

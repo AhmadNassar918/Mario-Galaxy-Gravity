@@ -1,18 +1,15 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class PlanetController : MonoBehaviour
 {
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
+        PlayerController playerController = other.GetComponent<PlayerController>();
+        if (playerController != null)
         {
-            other.GetComponent<PlayerController>().currentPlanet = transform;
-        }
-        if (other.CompareTag("PlayerCollider"))
-        {
-            other.GetComponentInParent<PlayerController>().currentPlanet = transform;
+            if (playerController.currentPlanet == transform) return;
+            playerController.currentPlanet = transform;
+            playerController.EnterNewGravityField();
         }
     }
 }
